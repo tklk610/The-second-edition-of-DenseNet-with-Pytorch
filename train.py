@@ -49,7 +49,9 @@ class Trainer(object):
             drop_rate   = args.drop_rate,
             sync_bn     = args.sync_bn,
             dsconv      = args.dsconv,
-            training    = args.training
+            training    = args.training,
+            amp_sel     = args.amp_sel,
+            active      = args.active
         )
 
         print(model)
@@ -78,19 +80,6 @@ class Trainer(object):
                 nesterov     = args.nesterov
             )
 
-        # Define Criterion
-        # whether to use class balanced weights
-        #if args.use_balanced_weights:
-        #    classes_weights_path = os.path.join(cfg.DATASET_DIR, args.dataset+'_classes_weights.npy')
-        #    if os.path.isfile(classes_weights_path):
-        #        weight = np.load(classes_weights_path)
-        #    else:
-        #        weight = calculate_weigths_labels(args.dataset, self.train_loader, self.nclass)
-        #    weight = torch.from_numpy(weight.astype(np.float32))
-        #    print("[Note] : Weigths Balanced is used!!!")
-        #else:
-        #    weight = None
-
         self.criterion = SegmentationLosses(weight=None, cuda=args.cuda).build_loss(mode=args.loss_type)
         self.model, self.optimizer = model, optimizer
         
@@ -100,20 +89,13 @@ class Trainer(object):
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, args.epochs, len(self.train_loader))
 
-        # Using DataParallel
-        # if args.cuda and not args.ddp:
-        #     self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
-        #     patch_replication_callback(self.model)
-        #     self.model = self.model.cuda()
-        #     print("[Note] : DP mode is used!!!")
-
         if args.cuda and args.ddp :
             # self.model = self.model.cuda()
             self.model = self.model.to(device)
             # 同步BN
             self.model = convert_syncbn_model(model)
             # 混合精度
-            self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level='O0')
+            self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level=args.opt_level)
             # 分布数据并行
             self.model = DistributedDataParallel(self.model, delay_allreduce=True)
 
@@ -127,7 +109,7 @@ class Trainer(object):
             args.start_epoch = checkpoint['epoch']
 
             if args.cuda and args.ddp :
-                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level='O0')
+                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level=args.opt_level)
                 self.model.load_state_dict(checkpoint['state_dict'])  # 注意，load模型需要在amp.initialize之后！！！
                 optimizer.load_state_dict(checkpoint['optimizer'])
                 amp.load_state_dict(checkpoint['amp'])
@@ -202,7 +184,6 @@ class Trainer(object):
                         'amp'        : amp.state_dict(),
                         'best_pred'  : self.best_pred,
                     }, is_best)
-
             else :
                 self.saver.save_checkpoint({
                     'epoch'      : epoch + 1,
@@ -234,7 +215,7 @@ class Trainer(object):
             #pred = output.data.cpu().float()
             pred = output.data.max(1)[1]  # get the index of the max log-probability
             Acc += (pred == target).sum().float()/self.args.batch
-            #All_acc += len(target)
+            # All_acc += len(target)
 
             # Add batch sample into evaluator
             # self.evaluator.add_batch(target, pred)
@@ -275,20 +256,17 @@ class Trainer(object):
                 }, is_best)
 
 
-
 def main():
     # 命令行交互，设置一些基本的参数
     parser = argparse.ArgumentParser(description="PyTorch DenseNet Training")
     parser.add_argument('--backbone', type=str, default='net121', choices=['net121', 'net161', 'net169', 'net201'],
                                                                            help='backbone name')
-    parser.add_argument('--growthRate', type=int, default=12, help='number of features added per DenseNet layer')
     parser.add_argument('--compression', type=int, default=0.7, help='network output stride')
     parser.add_argument('--bottleneck', type=str, default=True, help='network output stride')
     parser.add_argument('--drop_rate', type=int, default=0.5, help='dropout rate')
     parser.add_argument('--training', type=str, default=True, help='')
     parser.add_argument('--dataset', type=str, default='oled_data', choices=['oled_data'],
                                                                    help='dataset name (default: pascal)')
-
     parser.add_argument('--workers', type=int, default=4, metavar='N', help='dataloader threads')
     parser.add_argument('--img_size', type=int, default=(320, 320), help='train and val image resize')
     parser.add_argument('--loss_type', type=str, default='focal', choices=['ce', 'focal'],
@@ -310,16 +288,19 @@ def main():
     parser.add_argument('--lr_scheduler', type=str, default='poly', choices=['poly', 'step', 'cos'],
                                                                       help='lr scheduler mode: (default: poly)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M', help='momentum (default: 0.9)')
-    parser.add_argument('--weight_decay', type=float, default=5e-4, metavar='M', help='w-decay (default: 5e-4)')
+    parser.add_argument('--weight_decay', type=float, default=None, metavar='M', help='w-decay (default: 5e-4)')
     parser.add_argument('--nesterov', action='store_true', default=True, help='whether use nesterov (default: False)')
 
     # APEX DDP mode
     parser.add_argument('--local_rank', default=0, type=int, help='node rank for distributed training')
     parser.add_argument('--ddp', type=str, default=True, help='use APEX DDP mode')
+    parser.add_argument('--opt_level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='use AMP mode')
+    parser.add_argument('--active', type=str, default='ReLU', choices=['SWISH', 'PReLU', 'ReLU'],
+                                                       help='Selection of a activation function')
 
     # cuda, seed and logging
     parser.add_argument('--sync_bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
-    parser.add_argument('--dsconv', type=bool, default=True, help='whether to use deep separable conv ')
+    parser.add_argument('--dsconv', type=bool, default=False, help='whether to use deep separable conv ')
     parser.add_argument('--no_cuda', action='store_true', default=False, help='disables CUDA training')
     parser.add_argument('--gpu_ids', type=str, default='0,1', help='use which gpu to train, must be a \
                                                                      comma-separated list of integers only (default=0)')
@@ -336,6 +317,7 @@ def main():
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
+    args.amp_sel  = args.opt_level != 'O0'
 
     if args.cuda:
         try:
@@ -349,6 +331,12 @@ def main():
             print("[Note] : Sync Batch is used!!!")
         else:
             args.sync_bn = False
+
+    if args.weight_decay is None :
+        if args.active == 'PReLU' :
+            args.weight_decay = 0
+        else:
+            args.weight_decay = 5e-4
 
     # default settings for epochs, batch_size and lr
     if args.epochs is None:

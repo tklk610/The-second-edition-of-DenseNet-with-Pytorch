@@ -60,13 +60,14 @@ class Saver(object):
         p['adam']                 = self.args.adam
         p['lr']                   = self.args.lr
         p['ddp']                  = self.args.ddp
+        p['dsconv']               = self.args.dsconv
+        p['active']               = self.args.avtive
         p['lr_scheduler']         = self.args.lr_scheduler
         p['loss_type']            = self.args.loss_type
         p['momentum']             = self.args.momentum
         p['weigth_decay']         = self.args.weight_decay
         p['nesterov']             = self.args.nesterov
         #p['use_balanced_weights'] = self.args.use_balanced_weights
-        p['use_sbd']              = self.args.use_sbd
         p['gpu_ids']              = self.args.gpu_ids
         p['workers']              = self.args.workers
 

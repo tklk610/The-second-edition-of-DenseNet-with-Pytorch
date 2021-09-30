@@ -5,10 +5,10 @@
 NUM_CLASSES = 2
 
 #数据集的存放位置
-DATASET_DIR       = r'/media/jzdyjy/EEB2EF73B2EF3EA9/workstore/lekang/DenseNet/densenet_v2/data'
-TRAIN_DATASET_DIR = r'/media/jzdyjy/EEB2EF73B2EF3EA9/workstore/lekang/DenseNet/densenet_v2/data/train'
-VAL_DATASET_DIR   = r'/media/jzdyjy/EEB2EF73B2EF3EA9/workstore/lekang/DenseNet/densenet_v2/data/val'
-TEST_DATASET_DIR  = r'/media/jzdyjy/EEB2EF73B2EF3EA9/workstore/lekang/DenseNet/densenet_v2/inference/image'
+DATASET_DIR       = r'/media/jzdyjy/EEB2EF73B2EF3EA9/workstore/lekang/DenseNet/densenet_v2.1/data'
+TRAIN_DATASET_DIR = r'/media/jzdyjy/EEB2EF73B2EF3EA9/workstore/lekang/DenseNet/densenet_v2.1/data/train'
+VAL_DATASET_DIR   = r'/media/jzdyjy/EEB2EF73B2EF3EA9/workstore/lekang/DenseNet/densenet_v2.1/data/val'
+TEST_DATASET_DIR  = r'/media/jzdyjy/EEB2EF73B2EF3EA9/workstore/lekang/DenseNet/densenet_v2.1/inference/image'
 
 # DATASET_DIR        = r'F:/lekang/PycharmPreject/NeralNetwork/DenseNet/densenet_lk/data'
 # TRAIN_DATASET_DIR  = r'F:/lekang/PycharmPreject/NeralNetwork/DenseNet/densenet_lk/data/train'

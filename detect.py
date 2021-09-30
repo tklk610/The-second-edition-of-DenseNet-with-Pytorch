@@ -8,31 +8,34 @@ from dataloaders import cfg
 from models.densenet import *
 from dataloaders.datasets.datasets import LoadStreams, LoadImages
 
+
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DenseNet Detecting")
     parser.add_argument('--in_path', type=str, default='inference/image/test', help='image to test')
     parser.add_argument('--out_path', type=str, default='inference/output', help='mask image to save')
     parser.add_argument('--backbone', type=str, default='net121', choices=['net121', 'net161', 'net169', 'net201'],
                                                                   help='backbone name (default: net121)')
-    parser.add_argument('--growthRate', type=int, default=12, help='number of features added per DenseNet layer')
     parser.add_argument('--compression', type=int, default=0.7, help='network output stride')
     parser.add_argument('--bottleneck', type=str, default=True, help='network output stride')
     parser.add_argument('--drop_rate', type=int, default=0.5, help='dropout rate')
-    parser.add_argument('--training', type=str, default=True, help='')
+    parser.add_argument('--training', type=str, default=False, help='')
     parser.add_argument('--weights', type=str, default='weights/model_best.pth.tar', help='saved model')
     parser.add_argument('--num_classes', type=int, default=2, help='')
     parser.add_argument('--no_cuda', action='store_true', default=False, help='disables CUDA training')
     parser.add_argument('--gpu_ids', type=str, default='0,1', help='use which gpu to train, must be a \
                                                                  comma-separated list of integers only (default=0)')
-    parser.add_argument('--img_size', type=int, default=(360, 360), help='crop image size')
+    parser.add_argument('--opt_level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'], help='use AMP mode')
+    parser.add_argument('--img_size', type=int, default=(320, 320), help='crop image size')
     parser.add_argument('--sync_bn', type=bool, default=None, help='whether to use sync bn (default: auto)')
-    parser.add_argument('--dsconv', type=bool, default=True, help='whether to use deep separable conv ')
-
+    parser.add_argument('--dsconv', type=bool, default=False, help='whether to use deep separable conv ')
+    parser.add_argument('--active', type=str, default='ReLU', choices=['SWISH', 'PReLU', 'ReLU'],
+                                                help='Selection of a activation function')
     parser.add_argument('--save_dir', action='store_true', default='inference/output', help='save results to *.txt')
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
-    print(torch.cuda.is_available())
+    args.amp_sel = args.opt_level != 'O0'
+    # print(torch.cuda.is_available())
 
     webcam = args.in_path.isnumeric() or args.in_path.endswith('.txt') or args.in_path.lower().startswith(
         ('rtsp://', 'rtmp://', 'http://'))
@@ -63,65 +66,19 @@ def main():
         drop_rate   = args.drop_rate,
         sync_bn     = args.sync_bn,
         dsconv      = args.dsconv,
-        training    = args.training
+        training    = args.training,
+        amp_sel     = args.amp_sel,
+        active      = args.active
     )
 
     labels2classes = cfg.labels_to_classes
     ckpt = torch.load(args.weights, map_location='cpu')
     model.load_state_dict(ckpt['state_dict'])
+    # model.load_state_dict(ckpt['amp'])
     model           = model.cuda()
     model_u_time    = time.time()
     model_load_time = model_u_time-model_s_time
     print("model load time is {}s".format(model_load_time))
-
-    # for i, (image, target) in enumerate(test_loader) :
-    #     s_time = time.time()
-    #     print(image.path)
-    #     print(target)
-    #
-    #     model.eval()
-    #     if args.cuda:
-    #         image = image.cuda()
-    #
-    #     with torch.no_grad():
-    #         out        = model(image)
-    #         prediction = torch.max(out, 1)[1]
-    #
-    #     u_time = time.time()
-    #     img_time = u_time-s_time
-    #     label = labels2classes[str(prediction.cpu().numpy()[0])]
-    #
-    #     #print("image:{} label:{} time: {} ".format(image, label, img_time))
-    #     print("label:{} time: {} ".format(label, img_time))
-
-
-
-    # composed_transforms = transforms.Compose([
-    #     transforms.Resize(args.img_size),
-    #     transforms.ToTensor()
-    # ])
-    #
-    # for name in os.listdir(args.in_path):
-    #     s_time = time.time()
-    #     image  = Image.open(args.in_path+"/"+name).convert('RGB')
-    #     target = Image.open(args.in_path + "/" + name).convert('L')
-    #     sample = {'image': image, 'label': target}
-    #
-    #     tensor_in = composed_transforms(sample)['image'].unsqueeze(0)
-    #
-    #     model.eval()
-    #
-    #     if args.cuda:
-    #         tensor_in = tensor_in.cuda()
-    #     with torch.no_grad():
-    #         out = model(tensor_in)
-    #         prediction = torch.max(out, 1)[1]
-    #
-    #     u_time = time.time()
-    #     img_time = u_time-s_time
-    #     label = labels2classes[str(prediction.cpu().numpy()[0])]
-    #
-    #     print("image:{} label:{} time: {} ".format(name, label, img_time))
 
     if args.cuda :
         model.half()
@@ -139,7 +96,7 @@ def main():
         image  = image.half() if args.cuda else image.float()  # uint8 to fp16/32
         image /= 255.0              # 0 - 255 to 0.0 - 1.0
 
-        if image.ndimension() == 3:
+        if image.ndimension() == 3 :
             image = image.unsqueeze(0)
 
         s_time = time.time()
