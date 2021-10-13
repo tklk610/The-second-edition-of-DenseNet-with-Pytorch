@@ -61,7 +61,7 @@ class Saver(object):
         p['lr']                   = self.args.lr
         p['ddp']                  = self.args.ddp
         p['dsconv']               = self.args.dsconv
-        p['active']               = self.args.avtive
+        p['active']               = self.args.active
         p['lr_scheduler']         = self.args.lr_scheduler
         p['loss_type']            = self.args.loss_type
         p['momentum']             = self.args.momentum
